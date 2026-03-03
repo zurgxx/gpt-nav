@@ -57,7 +57,7 @@ const createNavigationPanel = () => {
   // Create the navigation panel container
   const navPanel = document.createElement('div');
   navPanel.id = 'gpt-navigator-panel';
-  navPanel.className = 'gpt-navigator-panel';
+  navPanel.className = 'gpt-navigator-panel collapsed';
   
   // Add header to the panel
   const navHeader = document.createElement('div');
@@ -125,7 +125,7 @@ const createNavigationPanel = () => {
   const toggleButton = document.createElement('button');
   toggleButton.id = 'gpt-navigator-toggle';
   toggleButton.className = 'gpt-navigator-toggle';
-  toggleButton.innerHTML = '&raquo;';
+  toggleButton.innerHTML = '&laquo;';
   toggleButton.addEventListener('click', () => {
     navPanel.classList.toggle('collapsed');
     toggleButton.innerHTML = navPanel.classList.contains('collapsed') ? '&laquo;' : '&raquo;';
