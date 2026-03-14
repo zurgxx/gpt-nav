@@ -22,6 +22,11 @@
         "https://chat.openai.com/*", 
         "https://chatgpt.com/*"
       ],
+      "exclude_matches": [
+        "https://chatgpt.com/codex/settings",
+        "https://chatgpt.com/codex/settings/",
+        "https://chatgpt.com/codex/settings/*"
+      ],
       "js": ["content.js"],
       "css": ["styles.css"]
     }

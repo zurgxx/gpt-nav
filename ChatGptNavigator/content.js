@@ -1,3 +1,15 @@
+let activeChatContainer = null;
+let chatContainerObserver = null;
+let rootObserverInitialized = false;
+let resizeHandlerInstalled = false;
+
+const normalizePath = (pathname) => pathname.replace(/\/+$/, '') || '/';
+
+const isExcludedPath = (pathname = window.location.pathname) => {
+  const normalizedPath = normalizePath(pathname);
+  return normalizedPath === '/codex/settings' || normalizedPath.startsWith('/codex/settings/');
+};
+
 // Main observer for ChatGPT interface
 const observeDOM = () => {
   const chatContainer = document.querySelector('main');
@@ -6,22 +18,35 @@ const observeDOM = () => {
     setTimeout(observeDOM, 500);
     return;
   }
-  
+
   // Create and inject the navigation panel once we have the chat container
-  createNavigationPanel();
-  
+  ensureNavigationPanel();
+
+  if (activeChatContainer === chatContainer && chatContainerObserver) {
+    return;
+  }
+
+  if (chatContainerObserver) {
+    chatContainerObserver.disconnect();
+  }
+
+  activeChatContainer = chatContainer;
+
   // Set up the observer to watch for new messages and conversation changes
-  const observer = new MutationObserver((mutations) => {
+  chatContainerObserver = new MutationObserver((mutations) => {
     handleDOMChanges(mutations);
     checkForConversationChange(); // Check for conversation change on DOM updates
   });
-  observer.observe(chatContainer, { childList: true, subtree: true });
-  
+  chatContainerObserver.observe(chatContainer, { childList: true, subtree: true });
+
   // Add window resize handler to adjust panel layout if needed
-  window.addEventListener('resize', adjustPanelOnResize);
-  
+  if (!resizeHandlerInstalled) {
+    window.addEventListener('resize', adjustPanelOnResize);
+    resizeHandlerInstalled = true;
+  }
+
   // Initial check for conversation ID and load bookmarks
-  currentConversationId = getConversationId();
+  currentConversationKey = getConversationKey();
   loadBookmarks();
 };
 
@@ -164,6 +189,15 @@ const createNavigationPanel = () => {
   scanExistingPrompts();
 };
 
+const ensureNavigationPanel = () => {
+  const navPanel = document.getElementById('gpt-navigator-panel');
+  const toggleButton = document.getElementById('gpt-navigator-toggle');
+
+  if (!navPanel || !toggleButton) {
+    createNavigationPanel();
+  }
+};
+
 // Set up resize handlers
 const setupResizeHandlers = (handle, panel) => {
   let startX, startWidth;
@@ -223,6 +257,8 @@ const setupResizeHandlers = (handle, panel) => {
 
 // Handler for DOM changes
 const handleDOMChanges = (mutations) => {
+  ensureNavigationPanel();
+
   for (const mutation of mutations) {
     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
       scanExistingPrompts();
@@ -230,15 +266,20 @@ const handleDOMChanges = (mutations) => {
   }
 };
 
-// Debug function to log extracted content
-const debugLog = (message, data) => {
-  if (false) { // Logging disabled in production
-    console.log(`[GPT Navigator] ${message}`, data);
-  }
+const schedulePromptRescans = (reason) => {
+  const delays = [0, 300, 1000, 2000];
+  delays.forEach((delay) => {
+    setTimeout(() => {
+      observeDOM();
+      scanExistingPrompts();
+    }, delay);
+  });
 };
 
 // Scan existing prompts and add to navigation
 const scanExistingPrompts = () => {
+  ensureNavigationPanel();
+
   const navLinks = document.getElementById('gpt-navigator-links');
   if (!navLinks) return;
   
@@ -248,9 +289,20 @@ const scanExistingPrompts = () => {
   try {
     // Find all user messages - updated selectors for the new ChatGPT structure
     // Look for all elements with data-message-author-role="user"
-    const userMessages = document.querySelectorAll('[data-message-author-role="user"]');
-    
-    debugLog('Found user messages:', userMessages.length);
+    const selectorCandidates = [
+      '[data-message-author-role="user"]',
+      '[data-testid^="conversation-turn-"][data-message-author-role="user"]',
+      'article [data-message-author-role="user"]'
+    ];
+
+    let userMessages = [];
+    for (const selector of selectorCandidates) {
+      const matches = Array.from(document.querySelectorAll(selector));
+      if (matches.length > 0) {
+        userMessages = matches;
+        break;
+      }
+    }
     
     userMessages.forEach((messageElement, index) => {
       // Extract the user's text input using improved method
@@ -534,22 +586,40 @@ const adjustPanelOnResize = () => {
 let bookmarkedMessages = [];
 let showingOnlyBookmarks = false;
 
-// Get current conversation ID from URL
-const getConversationId = () => {
-  const match = window.location.pathname.match(/\/c\/([a-zA-Z0-9-]+)/);
-  return match ? match[1] : null;
+// Get a stable conversation key from the current route.
+// For known `/c/<id>` routes we use the conversation ID.
+// For project routes and other variants we fall back to the normalized pathname.
+const getConversationKey = () => {
+  const normalizedPath = normalizePath(window.location.pathname);
+  const directConversationMatch = normalizedPath.match(/\/c\/([a-zA-Z0-9-]+)/);
+
+  if (directConversationMatch) {
+    return `c:${directConversationMatch[1]}`;
+  }
+
+  if (normalizedPath !== '/') {
+    return `path:${normalizedPath}`;
+  }
+
+  return null;
+};
+
+const getStorageKey = () => {
+  const conversationKey = getConversationKey();
+  if (!conversationKey) return null;
+  return `gptNavigatorBookmarks_${encodeURIComponent(conversationKey)}`;
 };
 
 // Load bookmarks from storage
 const loadBookmarks = () => {
   try {
-    const conversationId = getConversationId();
-    if (!conversationId) {
+    const storageKey = getStorageKey();
+    if (!storageKey) {
       bookmarkedMessages = [];
       scanExistingPrompts(); // Rescan to clear bookmarks if no ID
       return;
     }
-    const storageKey = `gptNavigatorBookmarks_${conversationId}`;
+
     chrome.storage.local.get(storageKey, (data) => {
       if (data[storageKey]) {
         bookmarkedMessages = JSON.parse(data[storageKey]);
@@ -558,17 +628,17 @@ const loadBookmarks = () => {
       }
       // Rescan to apply bookmark state, regardless of whether bookmarks were found
       scanExistingPrompts();
+      schedulePromptRescans('load-bookmarks');
     });
   } catch (error) {
     console.error('[GPT Navigator] Error loading bookmarks:', error);
     // Use localStorage as fallback
-    const conversationId = getConversationId();
-    if (!conversationId) {
+    const storageKey = getStorageKey();
+    if (!storageKey) {
       bookmarkedMessages = [];
       scanExistingPrompts();
       return;
     }
-    const storageKey = `gptNavigatorBookmarks_${conversationId}`;
     const savedBookmarks = localStorage.getItem(storageKey);
     if (savedBookmarks) {
       try {
@@ -580,24 +650,23 @@ const loadBookmarks = () => {
       bookmarkedMessages = [];
     }
     scanExistingPrompts(); // Ensure UI updates with fallback data
+    schedulePromptRescans('load-bookmarks-fallback');
   }
 };
 
 // Save bookmarks to storage
 const saveBookmarks = () => {
   try {
-    const conversationId = getConversationId();
-    if (!conversationId) return; // Don't save if no conversation ID
+    const storageKey = getStorageKey();
+    if (!storageKey) return; // Don't save if no conversation ID
 
-    const storageKey = `gptNavigatorBookmarks_${conversationId}`;
     // Try to use chrome.storage API
     chrome.storage.local.set({ [storageKey]: JSON.stringify(bookmarkedMessages) });
   } catch (error) {
     // If chrome.storage is unavailable, fall back to localStorage
-    const conversationId = getConversationId();
-    if (!conversationId) return;
+    const storageKey = getStorageKey();
+    if (!storageKey) return;
 
-    const storageKey = `gptNavigatorBookmarks_${conversationId}`;
     localStorage.setItem(storageKey, JSON.stringify(bookmarkedMessages));
   }
 };
@@ -643,19 +712,84 @@ const toggleBookmark = (e, index, messageContent) => {
   saveBookmarks();
 };
 
-// Variable to store the current conversation ID
-let currentConversationId = null;
+// Variable to store the current conversation key
+let currentConversationKey = null;
+let lastObservedHref = '';
 
 // Function to check for conversation changes
-const checkForConversationChange = () => {
-  const newConversationId = getConversationId();
-  if (newConversationId !== currentConversationId) {
-    console.log('[GPT Navigator] Conversation changed from', currentConversationId, 'to', newConversationId);
-    currentConversationId = newConversationId;
+const checkForConversationChange = (reason = 'unknown') => {
+  const newConversationKey = getConversationKey();
+  const hrefChanged = window.location.href !== lastObservedHref;
+
+  if (hrefChanged) {
+    lastObservedHref = window.location.href;
+  }
+
+  if (newConversationKey !== currentConversationKey) {
+    currentConversationKey = newConversationKey;
     // Conversation has changed, load new bookmarks
     // scanExistingPrompts() is called by loadBookmarks
+    observeDOM();
     loadBookmarks();
+    schedulePromptRescans(`conversation-change:${reason}`);
+  } else if (hrefChanged) {
+    observeDOM();
+    scanExistingPrompts();
+    schedulePromptRescans(`route-update:${reason}`);
   }
+};
+
+const installNavigationObservers = () => {
+  if (window.__GPT_NAVIGATOR_HISTORY_PATCHED__) return;
+  window.__GPT_NAVIGATOR_HISTORY_PATCHED__ = true;
+
+  lastObservedHref = window.location.href;
+
+  const wrapHistoryMethod = (methodName) => {
+    const originalMethod = window.history[methodName];
+    if (typeof originalMethod !== 'function') return;
+
+    window.history[methodName] = function patchedHistoryMethod(...args) {
+      const result = originalMethod.apply(this, args);
+      setTimeout(() => checkForConversationChange(`history:${methodName}`), 0);
+      return result;
+    };
+  };
+
+  wrapHistoryMethod('pushState');
+  wrapHistoryMethod('replaceState');
+
+  window.addEventListener('popstate', () => checkForConversationChange('popstate'));
+  window.addEventListener('hashchange', () => checkForConversationChange('hashchange'));
+
+  setInterval(() => {
+    checkForConversationChange('poll');
+  }, 1000);
+};
+
+const installRootObserver = () => {
+  if (rootObserverInitialized) return;
+  rootObserverInitialized = true;
+
+  const startObservingRoot = () => {
+    if (!document.body) {
+      setTimeout(startObservingRoot, 200);
+      return;
+    }
+
+    const rootObserver = new MutationObserver(() => {
+      const panelMissing = !document.getElementById('gpt-navigator-panel');
+      const mainChanged = document.querySelector('main') !== activeChatContainer;
+
+      if (panelMissing || mainChanged) {
+        observeDOM();
+      }
+    });
+
+    rootObserver.observe(document.body, { childList: true, subtree: true });
+  };
+
+  startObservingRoot();
 };
 
 // Load display mode from storage
@@ -737,9 +871,11 @@ const applyDisplayMode = () => {
 
 // Start observing DOM and listen for URL changes
 document.addEventListener('DOMContentLoaded', () => {
+  if (isExcludedPath()) return;
+
+  installNavigationObservers();
+  installRootObserver();
   observeDOM();
-  // Add a popstate listener for URL changes (e.g., back/forward navigation)
-  window.addEventListener('popstate', checkForConversationChange);
   // Initial application of display mode based on saved preference or default
   loadDisplayMode(); // Ensure mode is loaded before first apply
   applyDisplayMode();
@@ -748,5 +884,11 @@ document.addEventListener('DOMContentLoaded', () => {
 // If the DOM is already loaded when this script runs, observeDOM() should still be called.
 // Adding a direct call here as a fallback, but DOMContentLoaded should be the primary trigger.
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-  observeDOM();
+  if (isExcludedPath()) {
+    // Skip initialization on routes that should never show the navigator.
+  } else {
+    installNavigationObservers();
+    installRootObserver();
+    observeDOM();
+  }
 } 
