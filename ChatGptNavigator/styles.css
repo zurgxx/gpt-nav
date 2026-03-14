@@ -28,6 +28,14 @@ html.light .gpt-navigator-panel {
   transform: translateX(calc(100% - 5px));
 }
 
+.gpt-navigator-panel.floating.collapsed {
+  transform: translateX(100%);
+}
+
+.gpt-navigator-panel.floating.collapsed .gpt-navigator-resize-handle {
+  pointer-events: none;
+}
+
 .gpt-navigator-header {
   padding: 8px 15px;
   border-bottom: 1px solid #444654;
@@ -453,6 +461,14 @@ html.light .gpt-navigator-panel.embedded {
   transform: translateX(calc(100% - 5px)); /* Same as floating collapsed */
 }
 
+.gpt-navigator-panel.floating.collapsed {
+  transform: translateX(100%);
+}
+
+.gpt-navigator-panel.floating.collapsed .gpt-navigator-resize-handle {
+  pointer-events: none;
+}
+
 /* Styles for Floating Mode (explicit class) */
 .gpt-navigator-panel.floating {
   /* Default styles are floating, but this class can be used for overrides if float-specifics are needed */
@@ -639,6 +655,14 @@ html.light .gpt-navigator-panel.embedded {
 /* When embedded and collapsed, transform is the same */
 .gpt-navigator-panel.embedded.collapsed {
   transform: translateX(calc(100% - 5px)); /* Same as floating collapsed */
+}
+
+.gpt-navigator-panel.floating.collapsed {
+  transform: translateX(100%);
+}
+
+.gpt-navigator-panel.floating.collapsed .gpt-navigator-resize-handle {
+  pointer-events: none;
 }
 
 /* Styles for Floating Mode (explicit class) */
