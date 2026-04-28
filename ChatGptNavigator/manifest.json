@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ChatGPT Navigator",
-  "version": "0.2.0.0",
+  "version": "0.2.0.1",
   "description": "Navigation panel for ChatGPT that shows links to all prompts",
   "icons": {
     "16": "images/icon16.png",
@@ -25,7 +25,11 @@
       "exclude_matches": [
         "https://chatgpt.com/codex/settings",
         "https://chatgpt.com/codex/settings/",
-        "https://chatgpt.com/codex/settings/*"
+        "https://chatgpt.com/codex/settings/*",
+        "https://chatgpt.com/backend-api/*",
+        "https://chatgpt.com/api/*",
+        "https://chat.openai.com/backend-api/*",
+        "https://chat.openai.com/api/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"]

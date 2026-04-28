@@ -7,7 +7,27 @@ const normalizePath = (pathname) => pathname.replace(/\/+$/, '') || '/';
 
 const isExcludedPath = (pathname = window.location.pathname) => {
   const normalizedPath = normalizePath(pathname);
-  return normalizedPath === '/codex/settings' || normalizedPath.startsWith('/codex/settings/');
+  return normalizedPath === '/codex/settings' ||
+    normalizedPath.startsWith('/codex/settings/') ||
+    normalizedPath.startsWith('/backend-api/') ||
+    normalizedPath.startsWith('/api/');
+};
+
+const getLocalStorageItem = (key) => {
+  try {
+    return window.localStorage.getItem(key);
+  } catch (error) {
+    return null;
+  }
+};
+
+const setLocalStorageItem = (key, value) => {
+  try {
+    window.localStorage.setItem(key, value);
+    return true;
+  } catch (error) {
+    return false;
+  }
 };
 
 // Main observer for ChatGPT interface
@@ -249,7 +269,7 @@ const setupResizeHandlers = (handle, panel) => {
     }
     
     // Save user-set width
-    localStorage.setItem('gpt-navigator-width', userPanelWidth.current);
+    setLocalStorageItem('gpt-navigator-width', userPanelWidth.current);
   };
   
   handle.addEventListener('mousedown', startResize);
@@ -561,7 +581,7 @@ const adjustPanelOnResize = () => {
   }
   
   // Try to read user-set width from local storage
-  const savedWidth = localStorage.getItem('gpt-navigator-width');
+  const savedWidth = getLocalStorageItem('gpt-navigator-width');
   if (savedWidth && !navPanel.classList.contains('gpt-navigator-resizing')) {
     userPanelWidth.current = parseInt(savedWidth);
     navPanel.style.width = `${userPanelWidth.current}px`;
@@ -639,7 +659,7 @@ const loadBookmarks = () => {
       scanExistingPrompts();
       return;
     }
-    const savedBookmarks = localStorage.getItem(storageKey);
+    const savedBookmarks = getLocalStorageItem(storageKey);
     if (savedBookmarks) {
       try {
         bookmarkedMessages = JSON.parse(savedBookmarks);
@@ -667,7 +687,7 @@ const saveBookmarks = () => {
     const storageKey = getStorageKey();
     if (!storageKey) return;
 
-    localStorage.setItem(storageKey, JSON.stringify(bookmarkedMessages));
+    setLocalStorageItem(storageKey, JSON.stringify(bookmarkedMessages));
   }
 };
 
@@ -794,7 +814,7 @@ const installRootObserver = () => {
 
 // Load display mode from storage
 const loadDisplayMode = () => {
-  const savedMode = localStorage.getItem('gpt-navigator-display-mode');
+  const savedMode = getLocalStorageItem('gpt-navigator-display-mode');
   if (savedMode === 'embed' || savedMode === 'float') {
     currentDisplayMode = savedMode;
   } else {
@@ -804,7 +824,7 @@ const loadDisplayMode = () => {
 
 // Save display mode to storage
 const saveDisplayMode = () => {
-  localStorage.setItem('gpt-navigator-display-mode', currentDisplayMode);
+  setLocalStorageItem('gpt-navigator-display-mode', currentDisplayMode);
 };
 
 // Toggle display mode
